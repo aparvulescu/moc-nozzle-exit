@@ -52,6 +52,13 @@ def M_from_nu(nu):
 
 
 def nu_M_function(M):
+    """
+    Function required for the root-finding method for finding the Mach number from the Prandtl-Meyer angle.
+    Equivalent with the expression nu(M) - nu_global == 0.
+
+    :param M: Mach number to be solved for
+    :return: nu(M) - nu_global
+    """
     return np.sqrt((gamma + 1) / (gamma - 1)) * np.arctan(np.sqrt((gamma - 1) / (gamma + 1) * (M * M - 1))) \
            - np.arctan(np.sqrt(M * M - 1)) - nu_global
 
@@ -417,6 +424,18 @@ def prop_bottom_BC(ia, ja, ib, jb):
 
 
 def prop_normal(ia, ja, ib, jb):
+    """
+    Propagate to (calculate) the next node P using the classic method of characteristics, from the nodes
+    A (index [ia, ja]) and B (index [ib, jb]). Node A is the node before C that is on the same Gamma+ characteristic,
+    and node B is the node before C that is on the same Gamma- characteristic.
+
+    :param ia: Gamma- coordinate of node A
+    :param ja: Gamma+ coordinate of node A
+    :param ib: Gamma- coordinate of node B
+    :param jb: Gamma+ coordinate of node B
+    :return: Returns nothing
+    """
+    # Assign needed values for calculation to nodes A and B
     nu_a = nu[ia, ja]
     mu_a = mu[ia, ja]
     phi_a = phi[ia, ja]
@@ -428,6 +447,7 @@ def prop_normal(ia, ja, ib, jb):
     x_b = x[ib, jb]
     y_b = y[ib, jb]
 
+    # Calculate values of node P
     nu_p = 0.5 * (nu_b + nu_a) + 0.5 * (phi_b - phi_a)
     phi_p = 0.5 * (phi_b + phi_a) + 0.5 * (nu_b - nu_a)
     Mp = M_from_nu(nu_p)
@@ -438,6 +458,7 @@ def prop_normal(ia, ja, ib, jb):
     x_p = (y_b - y_a + x_a * np.tan(alpha) - x_b * np.tan(beta)) / (np.tan(alpha) - np.tan(beta))
     y_p = y_a + x_p * np.tan(alpha) - x_a * np.tan(alpha)
 
+    # Add values of node D to the global data structure
     phi[ib, ja] = phi_p
     M[ib, ja] = Mp
     nu[ib, ja] = nu_p
@@ -447,13 +468,28 @@ def prop_normal(ia, ja, ib, jb):
 
 
 def propagation(steps):
-    global i_s
-    i_shock, j_shock, k_shock = np.nan, np.nan, np.nan
+    """
+    Function that propagates (calculates) the next nodes' values and positions, using the inital nozzle exit points,
+    and the ones created for the expansion flows. It also checks for shock formation, stops the propagation if one is
+    found, after that step is finished (to check for symmetric shocks), and return their coordinates. Furthermore, it
+    calculates the values and positions along the path of predefined streamline.
+
+    :param steps: Maximum number of steps performed in the propagation
+    :return: Returns nothing
+    """
+    # Initialise the last index of the streamline data structure arrays (i_s), the last index of the shock data
+    # structure arrays (index_shock), and the step at which the shock forms (k_shock)
+    global i_s, index_shock
+    k_shock = np.nan
+
+    # Cycle through all the steps. A step means calculating the values and positions of nodes for indices that respect
+    # the relation i + j = no_init - 1 + k (a diagonal in the data structure matrices)
     for k in range(steps + 1):
+        # Cycle through all the possible node indices for a given step
         for j in range(no_init + k):
             i = no_init - 1 + k - j
 
-            # Propagate values according to m.o.c.
+            # Propagate values according to the m.o.c.
             if not np.isnan(M[i, j]):
                 # Point already exists, passing...
                 pass
@@ -461,33 +497,52 @@ def propagation(steps):
                 # Two characteristics exist for this point's intersection, doing normal propagation
                 prop_normal(i - 1, j, i, j - 1)
             elif (not np.isnan(M[i - 1, j])) and (not np.isnan(M[i - 1, j - 1])):
-                # Point qualifies for top BC
+                # Point qualifies for top jet BC
                 prop_top_BC(i - 1, j, i - 1, j - 1)
             elif (not np.isnan(M[i, j - 1])) and (not np.isnan(M[i - 1, j - 1])):
-                # Point qualifies for bottom BC
+                # Point qualifies for bottom jet BC
                 prop_bottom_BC(i - 1, j - 1, i, j - 1)
 
-            # Check if shock develops by intersecting characteristics
+            # Check if shock develops by intersecting neighbouring characteristics
             if check_intersect(x[i, j], y[i, j], x[i - 1, j], y[i - 1, j], x[i, j - 1], y[i, j - 1], x[i - 1, j - 1],
-                               y[i - 1, j - 1]) \
-                    or check_intersect(x[i, j], y[i, j], x[i, j - 1], y[i, j - 1], x[i - 1, j], y[i - 1, j],
-                                       x[i - 1, j - 1], y[i - 1, j - 1]):
-                i_shock = i
-                j_shock = j
+                               y[i - 1, j - 1]):
+                # Store the shock locations
+                index_shock += 1
+                x_shock[index_shock] = get_intersect(x[i, j], y[i, j], x[i - 1, j], y[i - 1, j], x[i, j - 1],
+                                                     y[i, j - 1], x[i - 1, j - 1], y[i - 1, j - 1])[0]
+                y_shock[index_shock] = get_intersect(x[i, j], y[i, j], x[i - 1, j], y[i - 1, j], x[i, j - 1],
+                                                     y[i, j - 1], x[i - 1, j - 1], y[i - 1, j - 1])[1]
                 k_shock = k
-                break
+            elif check_intersect(x[i, j], y[i, j], x[i, j - 1], y[i, j - 1], x[i - 1, j], y[i - 1, j],
+                                 x[i - 1, j - 1], y[i - 1, j - 1]):
+                # Store the shock locations
+                index_shock += 1
+                x_shock[index_shock] = get_intersect(x[i, j], y[i, j], x[i, j - 1], y[i, j - 1], x[i - 1, j],
+                                                     y[i - 1, j], x[i - 1, j - 1], y[i - 1, j - 1])[0]
+                y_shock[index_shock] = get_intersect(x[i, j], y[i, j], x[i, j - 1], y[i, j - 1], x[i - 1, j],
+                                                     y[i - 1, j], x[i - 1, j - 1], y[i - 1, j - 1])[1]
+                k_shock = k
+            # If a shock has been found and if the current step number is greater than that of the shock, it exits the
+            # loop
             if not np.isnan(k_shock) and k > k_shock:
                 break
 
-            # Propagate streamline if possible
+            # Propagate streamline if an intersection is found with either of the immediate Gamma+ or Gamma- segment
+            # before the current node
             if not np.isnan(M[i, j]) and not np.isnan(M[i, j - 1]):
+                # Check for intersection with Gamma- segment
+                # Create virtual possible segment of the streamline propagation, with x-length 10 * h
                 x_s1 = xs[i_s]
                 y_s1 = ys[i_s]
                 phi_s = phis[i_s]
                 x_s2 = x_s1 + 10 * h
                 y_s2 = y_s1 + 10 * h * np.tan(phi_s)
+
+                # Check actual intersection
                 if check_intersect(x_s1, y_s1, x_s2, y_s2, x[i, j - 1], y[i, j - 1], x[i, j], y[i, j]):
                     xe, ye = get_intersect(x_s1, y_s1, x_s2, y_s2, x[i, j - 1], y[i, j - 1], x[i, j], y[i, j])
+
+                    # Move to the next index for the streamline arrays, and store the values in the data structure
                     i_s += 1
                     xs[i_s] = xe
                     ys[i_s] = ye
@@ -497,13 +552,19 @@ def propagation(steps):
                     mus[i_s] = mu[i, j - 1]
 
             elif not np.isnan(M[i, j]) and not np.isnan(M[i - 1, j]):
+                # Check for intersection with Gamma+ segment
+                # Create virtual possible segment of the streamline propagation, with x-length 10 * h
                 x_s1 = xs[i_s]
                 y_s1 = ys[i_s]
                 phi_s = phis[i_s]
                 x_s2 = x_s1 + 10 * h
                 y_s2 = y_s1 + 10 * h * np.tan(phi_s)
+
+                # Check actual intersection
                 if check_intersect(x_s1, y_s1, x_s2, y_s2, x[i - 1, j], y[i - 1, j], x[i, j], y[i, j]):
                     xe, ye = get_intersect(x_s1, y_s1, x_s2, y_s2, x[i - 1, j], y[i - 1, j], x[i, j], y[i, j])
+
+                    # Move to the next index for the streamline arrays, and store the values in the data structure
                     i_s += 1
                     xs[i_s] = xe
                     ys[i_s] = ye
@@ -512,75 +573,129 @@ def propagation(steps):
                     nus[i_s] = nu[i - 1, j]
                     mus[i_s] = mu[i - 1, j]
 
-    return i_shock, j_shock
-
 
 # ----------------------------------------------------------
 # Plotting functions
 # ----------------------------------------------------------
 
-def plot_all_M(i_shock):
+def plot_all_M(option):
+    """
+    Plot the Mach number field, either node-based (only at the calculated location), or by (smooth) interpolation over
+    the whole domain. Plot as well the symmetry axis.
+
+    :param option: Option variable. 0 to plot node-based Mach number field, 1 to plot (smooth) the interpolation
+    :return: Returns nothing
+    """
+    # Remove np.nan values from data structure
     xg = x[np.logical_not(np.isnan(x))]
     yg = y[np.logical_not(np.isnan(y))]
     Mg = M[np.logical_not(np.isnan(M))]
-    p1 = ax1.scatter(xg, yg, s=20, c=Mg, cmap="cool")
-    # p1 = ax1.tricontourf(xg, yg, Mg, levels=50, cmap="cool")
+
+    # Plot the corresponding field according to option
+    if option == 0:
+        p1 = ax1.scatter(xg, yg, s=20, c=Mg, cmap="cool")
+    elif option == 1:
+        p1 = ax1.tricontourf(xg, yg, Mg, levels=50, cmap="cool")
+    else:
+        raise Exception("This value for the plotting option is not supported! Choose option equal to 0 or 1")
     fig1.colorbar(p1, label="Mach number")
-    # ax1.hlines(0, -0.5, i_shock + 0.5, linestyles="dashdot", color="black")
+
+    # Plot symmetry line
+    ax1.hlines(0, -0.5, xg[-1] + 0.5, linestyles="dashdot", color="black")
 
 
 def plot_char():
+    """
+    Plot the characteristic lines originating from the expansion fans.
+
+    :return: Returns nothing
+    """
     for k in range(no_char):
+        # Plot the direct Gamma- characteristics arising from the top corner
         xt = x[no_init - 1 + k][np.logical_not(np.isnan(x[no_init - 1 + k]))]
         yt = y[no_init - 1 + k][np.logical_not(np.isnan(y[no_init - 1 + k]))]
         ax1.plot(xt, yt, color="black")
 
+        # Plot the direct Gamma+ characteristics arising from the bottom corner
         xb = x[:, 2 * no_init - 1 + k + no_char - 2][np.logical_not(np.isnan(x[:, 2 * no_init - 1 + k + no_char - 2]))]
         yb = y[:, 2 * no_init - 1 + k + no_char - 2][np.logical_not(np.isnan(y[:, 2 * no_init - 1 + k + no_char - 2]))]
         ax1.plot(xb, yb, color="black")
 
+        # Plot the indirect Gamma+ characteristics arising from the reflections of the Gamma- from the top corner
         xb = x[:, no_init - 1 + k][np.logical_not(np.isnan(x[:, no_init - 1 + k]))]
         yb = y[:, no_init - 1 + k][np.logical_not(np.isnan(y[:, no_init - 1 + k]))]
         ax1.plot(xb, yb, color="black")
 
+        # Plot the indirect Gamma- characteristics arising from the reflections of the Gamma+ from the bottom corner
         xb = x[2 * no_init - 1 + k + no_char - 2][np.logical_not(np.isnan(x[:, 2 * no_init - 1 + k + no_char - 2]))]
         yb = y[2 * no_init - 1 + k + no_char - 2][np.logical_not(np.isnan(y[:, 2 * no_init - 1 + k + no_char - 2]))]
         ax1.plot(xb, yb, color="black")
 
 
 def plot_jet_BC():
+    """
+    Plot the jet boundaries that encompass the flow with an orange line.
+
+    :return: Returns nothing
+    """
+    # Initialise data arrays for the top and bottom jet boundaries
     xt = np.array([])
     yt = np.array([])
     xb = np.array([])
     yb = np.array([])
 
+    # Loop over the coordinates of the nodes that are on the top jet boundary and add their position to xt and yt
     i = 0
-    print(x[no_init + no_char - 2 + i, i])
     while not np.isnan(x[no_init + no_char - 2 + i, i]):
         xt = np.append(xt, x[no_init + no_char - 2 + i, i])
         yt = np.append(yt, y[no_init + no_char - 2 + i, i])
         i += 1
 
+    # Loop over the coordinates of the nodes that are on the bottom jet boundary and add their position to xb and yb
     i = 0
     while not np.isnan(x[i, no_init + no_char - 2 + i]):
         xb = np.append(xb, x[i, no_init + no_char - 2 + i])
         yb = np.append(yb, y[i, no_init + no_char - 2 + i])
         i += 1
 
+    # Plot the jet boundaries
     ax1.plot(xt, yt, color="orange")
     ax1.plot(xb, yb, color="orange")
 
 
-def plot_shock(i_shock, j_shock):
-    ax1.plot(x[i_shock, j_shock], y[i_shock, j_shock], marker="X", color="red", markersize=10)
+def plot_shock():
+    """
+    Plot the locations of the shocks with red x crosses.
+
+    :return: Returns nothing
+    """
+    # Remove np.nan values from data structure
+    xg = x_shock[np.logical_not(np.isnan(x_shock))]
+    yg = y_shock[np.logical_not(np.isnan(y_shock))]
+
+    # Plot the shock formation locations
+    ax1.scatter(xg, yg, marker="X", color="red", s=50, zorder=500)
 
 
 def plot_streamline():
+    """
+    Plot the path of the streamline for which the initial conditions are specified globally. Also plot the (static)
+    pressure versus x-coordinate graph along the streamline.
+
+    :return: Returns nothing
+    """
+    # Remove np.nan values from data structure
     xg = xs[np.logical_not(np.isnan(xs))]
     yg = ys[np.logical_not(np.isnan(ys))]
     Mg = Ms[np.logical_not(np.isnan(Ms))]
+
+    # Calculate static pressure along streamline
     pg = pt / ((1 + (gamma - 1) / 2 * Mg * Mg) ** (gamma / (gamma - 1)))
+
+    # Plot the streamline path on the main figure
     ax1.plot(xg, yg, color="green")
+
+    # Plot the pressure vs x  graph of the streamline
     fig2, ax2 = plt.subplots()
     ax2.plot(xg, pg, color="black", label=rf"$y_0$ = {ys[0]}")
     ax2.set_xlabel("Horizontal position x")
@@ -607,6 +722,8 @@ no_init = 31  # Number of nodes to be created at the exit of the nozzle
 no_char = 31  # Number of characteristics to be created in the expansion fans at the top and bottom corners
 dim = 1010  # Dimension of (each axis of) each data structure matrix. Needs to be bigger than (no_init + no_steps + 1)!!
 no_steps = 500  # Maximum number of propagation steps
+option = 1  # Variable for choosing between plotting node-based values of the Mach number field, or a continuous field
+# calculated by interpolation. 0 for node-based, 1 for interpolation
 
 # Initialisation of global data structure matrices
 x = np.empty((dim, dim))
@@ -621,6 +738,13 @@ nu = np.empty((dim, dim))
 nu[:] = np.nan
 mu = np.empty((dim, dim))
 mu[:] = np.nan
+
+# Initialisation of possible shock data structure array
+x_shock = np.empty((2 * dim + 10))
+x_shock[:] = np.nan
+y_shock = np.empty((2 * dim + 10))
+y_shock[:] = np.nan
+index_shock = -1
 
 # Initialisation of the streamline data structure array
 xs = np.empty((2 * dim + 10))
@@ -652,15 +776,15 @@ i_s = 0  # Index of last entry in streamline arrays
 init_exit(no_init, h)
 assign_top_corner()
 assign_bottom_corner()
-i_shock, j_shock = propagation(no_steps)
+propagation(no_steps)
 
 # Plot Mach number distribution, characteristics, jet boundaries, chosen streamline and shock formation location
 fig1, ax1 = plt.subplots()
-plot_all_M(i_shock)
+plot_all_M(option)
 plot_char()
 plot_jet_BC()
 plot_streamline()
-if not np.isnan(i_shock):
-    plot_shock(i_shock, j_shock)
+if not np.isnan(x_shock[0]):
+    plot_shock()
 ax1.axis("equal")
 plt.show()
