@@ -3,6 +3,20 @@ import matplotlib.pyplot as plt
 from scipy import optimize
 
 
+# Commands for making font size in matplotlib bigger
+SMALL_SIZE = 16
+MEDIUM_SIZE = 18
+BIGGER_SIZE = 22
+
+plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
+plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+
+
 # ----------------------------------------------------------
 # Solver functions
 # ----------------------------------------------------------
@@ -85,7 +99,7 @@ def beta_M_function(M):
     :return: nu(M) - mu(M) - beta_global - nu_a_global + phi_a_global
     """
     return np.sqrt((gamma + 1) / (gamma - 1)) * np.arctan(np.sqrt((gamma - 1) / (gamma + 1) * (M * M - 1))) \
-        - np.arctan(np.sqrt(M * M - 1)) - np.arcsin(1 / M) - beta_global - nu_a_global + phi_a_global
+           - np.arctan(np.sqrt(M * M - 1)) - np.arcsin(1 / M) - beta_global - nu_a_global + phi_a_global
 
 
 def alpha_M_function(M):
@@ -97,7 +111,7 @@ def alpha_M_function(M):
     :return: nu(M) - mu(M) + alpha_global - nu_b_global + phi_b_global
     """
     return np.sqrt((gamma + 1) / (gamma - 1)) * np.arctan(np.sqrt((gamma - 1) / (gamma + 1) * (M * M - 1))) \
-        - np.arctan(np.sqrt(M * M - 1)) - np.arcsin(1 / M) + alpha_global - nu_b_global - phi_b_global
+           - np.arctan(np.sqrt(M * M - 1)) - np.arcsin(1 / M) + alpha_global - nu_b_global - phi_b_global
 
 
 def calc_e_jet(Me, pe, pa, phi_e):
@@ -469,7 +483,7 @@ def prop_normal(ia, ja, ib, jb):
 
 def propagation(steps):
     """
-    Function that propagates (calculates) the next nodes' values and positions, using the inital nozzle exit points,
+    Function that propagates (calculates) the next nodes' values and positions, using the initial nozzle exit points,
     and the ones created for the expansion flows. It also checks for shock formation, stops the propagation if one is
     found, after that step is finished (to check for symmetric shocks), and return their coordinates. Furthermore, it
     calculates the values and positions along the path of predefined streamline.
@@ -581,7 +595,7 @@ def propagation(steps):
 def plot_all_M(option):
     """
     Plot the Mach number field, either node-based (only at the calculated location), or by (smooth) interpolation over
-    the whole domain. Plot as well the symmetry axis.
+    the whole domain.
 
     :param option: Option variable. 0 to plot node-based Mach number field, 1 to plot (smooth) the interpolation
     :return: Returns nothing
@@ -599,9 +613,6 @@ def plot_all_M(option):
     else:
         raise Exception("This value for the plotting option is not supported! Choose option equal to 0 or 1")
     fig1.colorbar(p1, label="Mach number")
-
-    # Plot symmetry line
-    ax1.hlines(0, -0.5, xg[-1] + 0.5, linestyles="dashdot", color="black")
 
 
 def plot_char():
@@ -674,7 +685,7 @@ def plot_shock():
     yg = y_shock[np.logical_not(np.isnan(y_shock))]
 
     # Plot the shock formation locations
-    ax1.scatter(xg, yg, marker="X", color="red", s=50, zorder=500)
+    ax1.scatter(xg, yg, marker="X", color="red", s=100, zorder=500)
 
 
 def plot_streamline():
@@ -693,13 +704,47 @@ def plot_streamline():
     pg = pt / ((1 + (gamma - 1) / 2 * Mg * Mg) ** (gamma / (gamma - 1)))
 
     # Plot the streamline path on the main figure
-    ax1.plot(xg, yg, color="green")
+    ax1.plot(xg, yg, color="gold")
 
     # Plot the pressure vs x  graph of the streamline
     fig2, ax2 = plt.subplots()
     ax2.plot(xg, pg, color="black", label=rf"$y_0$ = {ys[0]}")
     ax2.set_xlabel("Horizontal position x")
-    ax2.set_ylabel("Static pressure p")
+    ax2.set_ylabel("Static pressure p [atm]")
+
+
+def plot_aux():
+    """
+    Plot auxiliary items, such as symmetry line and nozzle exit walls.
+
+    :return: Returns nothing
+    """
+    # Remove np.nan values from data structure
+    xg = x[np.logical_not(np.isnan(x))]
+
+    # Plot symmetry line
+    ax1.hlines(0, -0.5, xg[-1] + 0.5, linestyles="dashdot", color="black")
+
+    # Plot the exit nozzle walls
+    ax1.hlines(h / 2, -0.4, 0, color="black")
+    ax1.hlines(-h / 2, -0.4, 0, color="black")
+    ax1.vlines(0, h / 2, h / 2 * 1.3, color="black")
+    ax1.vlines(0, -h / 2, -h / 2 * 1.3, color="black")
+
+    xsh = np.linspace(-0.4, 0, 1001)
+    y1 = h / 2 * 1.3 * np.ones(xsh.shape[0])
+    y2 = h / 2 * np.ones(xsh.shape[0])
+    y3 = - h / 2 * np.ones(xsh.shape[0])
+    y4 = - h / 2 * 1.3 * np.ones(xsh.shape[0])
+    ax1.fill_between(xsh, y1, y2, color="darkgrey")
+    ax1.fill_between(xsh, y3, y4, color="darkgrey")
+
+    fig1.tight_layout()
+
+
+# ----------------------------------------------------------
+# Global program
+# ----------------------------------------------------------
 
 
 # Values needed for root-finding. Do not work with them outside the root-finding functions!
@@ -715,13 +760,13 @@ phi_b_global = np.nan
 Me = 2.0  # Mach number at the nozzle exit
 pa = 1  # Static pressure of the ambient atmosphere [atm]
 pe = 2 * pa  # Static pressure at the nozzle exit
-phi_e = 0  # Flow angle at the nozzle exit [rad]
+phi_e = 0.0  # Flow angle at the nozzle exit [rad]
 gamma = 1.4  # Specific heat ratio of air
-h = 1  # Height (diameter) of the nozzle exit
+h = 1.0  # Height (diameter) of the nozzle exit
 no_init = 31  # Number of nodes to be created at the exit of the nozzle
 no_char = 31  # Number of characteristics to be created in the expansion fans at the top and bottom corners
-dim = 1010  # Dimension of (each axis of) each data structure matrix. Needs to be bigger than (no_init + no_steps + 1)!!
-no_steps = 500  # Maximum number of propagation steps
+dim = 3010  # Dimension of (each axis of) each data structure matrix. Needs to be bigger than (no_init + no_steps + 1)!!
+no_steps = 2500  # Maximum number of propagation steps
 option = 1  # Variable for choosing between plotting node-based values of the Mach number field, or a continuous field
 # calculated by interpolation. 0 for node-based, 1 for interpolation
 
@@ -764,13 +809,13 @@ mus[:] = np.nan
 nu_e, mu_e, Mjet, nu_jet, mu_jet, phi_jet, pt = calc_e_jet(Me, pe, pa, phi_e)
 
 # Values for streamline initial conditions
-xs[0] = 0  # x-position
+xs[0] = 0.0  # x-position
 ys[0] = h / 4  # y-position
 phis[0] = phi_e  # Flow ange [rad]
 Ms[0] = Me  # Mach number
 nus[0] = nu_e  # Prandtl-Meyer angle [rad]
 mus[0] = mu_e  # Mach angle [rad]
-i_s = 0  # Index of last entry in streamline arrays
+i_s = 0  # Index of last entry in streamline arrays. Do not change!
 
 # Initialise the nozzle exit boundary, the expansion fans, and perform the global propagation
 init_exit(no_init, h)
@@ -786,5 +831,8 @@ plot_jet_BC()
 plot_streamline()
 if not np.isnan(x_shock[0]):
     plot_shock()
+plot_aux()
 ax1.axis("equal")
+ax1.set_xlabel("x coordinate")
+ax1.set_ylabel("y coordinate")
 plt.show()
